@@ -33,7 +33,9 @@ server
       // Render the component to a string
       const markup = renderToString(
         <Provider store={store}>
-           <StaticRouter location={req.url} context={context}>
+           <StaticRouter
+
+               location={req.url} context={context}>
             <App />
           </StaticRouter>
         </Provider>
@@ -63,7 +65,7 @@ server
         <script>
           window.__PRELOADED_STATE__ = ${serialize(finalState)}
         </script>
-        <!-- razzle_static_js -->
+   
         ${process.env.NODE_ENV === 'production'
         ? `<script src="${assets.client.js}" defer></script>`
         : `<script src="${assets.client.js}" defer crossorigin></script>`}
