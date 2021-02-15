@@ -1,3 +1,7 @@
-body{
-    background-color: #845EC2;
+@import 'app/sass/style.scss';
+
+@media (min-width: 992px) {
+  .header {
+    background-color: #fff;
+  }
 }
