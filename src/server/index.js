@@ -1,81 +1,131 @@
-//import App from '../common/containers/App';
-//import {Provider} from 'react-redux';
 import React from 'react';
-import {Helmet} from 'react-helmet';
-//import configureStore from '../common/store/configureStore';
 import express from 'express';
-//import {fetchCounter} from '../common/api/counter';
-import qs from 'qs';
+import {Helmet} from 'react-helmet';
+
+
 import {renderToString} from 'react-dom/server';
 import {HelmetProvider} from "react-helmet-async";
-import {StaticRouter} from 'react-router-dom';
+import {Provider, ReactReduxContext} from "react-redux";
+import {matchPath, StaticRouter} from 'react-router-dom';
 import serialize from 'serialize-javascript';
+import path from 'path';
+import {html, oneLineTrim} from 'common-tags';
+
+import {ChunkExtractor, ChunkExtractorManager} from "@loadable/server";
+import configureAppStore from "../app/commons/configureAppStore";
+import routes from "../app/commons/routes";
+import {fetchRoute} from "../app/commons/router";
 import App from "../app/index";
+
+
+const assets = require(process.env.RAZZLE_ASSETS_MANIFEST);
+let statsFile
+let extractor
+
+if(process.env.NODE_ENV === 'production'){
+    console.log('reading statsfile for PROD');
+    statsFile = path.resolve('./build/loadable-stats.json')
+    extractor = new ChunkExtractor({statsFile, entrypoints: ['client']})
+}
 
 const helmetContext = {
     htmlAttributes: {lang: 'tr'}
 };
-const assets = require(process.env.RAZZLE_ASSETS_MANIFEST);
 
 const server = express();
+
+const Render = (markup, extractor, helmet, preloadState) => oneLineTrim(html`
+    <!doctype html>
+    <html ${helmet.htmlAttributes.toString()}>
+    <head>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+        <meta charSet='utf-8'/>
+        <base href="/">
+        ${helmet.title.toString()}
+        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+        ${helmet.meta.toString()}
+        ${helmet.link.toString()}
+        ${extractor.getLinkTags()}
+        ${extractor.getStyleTags()}
+
+
+    </head>
+    <body ${helmet.bodyAttributes.toString()}>
+    <div id="appRoot" class="d-flex flex-column flex-root h-100 w-100">${markup}</div>
+
+    <script type="text/javascript">
+        window.__INITIAL_STATE__ = ${serialize(preloadState, {isJSON: true, unsafe: false})}
+    </script>
+
+    ${extractor.getScriptTags()}
+    </body>
+    </html>`);
+
+const Document = (store, extractor, helmetContext, req) => {
+    const html = renderToString(
+        <Provider store={store} context={ReactReduxContext}>
+            <StaticRouter
+                location={req.path}
+                context={ReactReduxContext}>
+                <ChunkExtractorManager extractor={extractor}>
+                    <HelmetProvider context={helmetContext}>
+                        <App/>
+                    </HelmetProvider>
+                </ChunkExtractorManager>
+            </StaticRouter>
+        </Provider>
+    );
+    return html
+}
 
 server
     .disable('x-powered-by')
     .use(express.static(process.env.RAZZLE_PUBLIC_DIR))
-    .get('/*', (req, res) => {
+    .get('/*', async(req, res) => {
+        await fetchRoute(req, async(router) => {
 
-        // Read the counter from the request, if provided
-        const context = {};
-        const params = qs.parse(req.query);
-        const counter = parseInt(params.counter, 10) || 0;
+            if(process.env.NODE_ENV === 'development'){
 
-        // Compile an initial state
-        const preloadedState = {counter};
+                extractor = new ChunkExtractor({
+                    statsFile: path.resolve('build/loadable-stats.json'),
+                    entrypoints: ['client'],
+                });
+            }
 
-        // Create a new Redux store instance
-        //const store = configureStore(preloadedState);
+            const context = {router};
 
-        // Render the component to a string
-        const markup = renderToString(
-            // <Provider store={store}>
-            <HelmetProvider context={helmetContext}>
-                <StaticRouter
-                    location={req.url} context={context}>
-                    <App/>
-                </StaticRouter>
-            </HelmetProvider>
-        );
+            const store = configureAppStore(context);
 
-        // Grab the initial state from our Redux store
-        //const finalState = store.getState();
 
-        const helmet = Helmet.renderStatic();
+            store.runSagaTask()
 
-        res.send(`<!doctype html>
-    <html  ${helmet.htmlAttributes.toString()}>
-    <head>
-        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-        <meta charSet='utf-8' />
-        ${helmet.title.toString()}
-        <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-        ${helmet.meta.toString()} 
-        ${helmet.link.toString()} 
-        ${assets.client.css
-            ? `<link rel="stylesheet" href="${assets.client.css}">`
-            : ''}
-   
-    </head>
-    <body ${helmet.bodyAttributes.toString()}>
-        <div id="root" class="d-flex flex-column flex-root">${markup}</div>
-        <script>
-          window.__PRELOADED_STATE__ = ${serialize({})}
-        </script>
-   
-        ${process.env.NODE_ENV === 'production'
-            ? `<script src="${assets.client.js}" defer></script>`
-            : `<script src="${assets.client.js}" defer crossorigin></script>`}
-    </body>
-</html>`);
+            const promises = routes
+                .filter(route => matchPath(req.url, route))
+                .map(route => route.component)
+                .filter(comp => comp.prefetch)
+                .map(comp => comp.prefetch({dispatch: store.dispatch, state: store.getState()}))
+
+
+            Promise.all(promises).then(() => {
+
+                const preloadedState = store.getState();
+
+                const helmet = Helmet.renderStatic();
+                // Grab the initial state from our Redux store
+                const html = Document(store, extractor, helmet, req);
+
+                const response = Render(html, extractor, helmet, preloadedState);
+
+                if(context.url){
+                    res.status(301).redirect(context.url);
+
+                }else{
+
+                    res.status(200).send(response);
+                }
+            });
+        });
+
     });
 
 export default server;

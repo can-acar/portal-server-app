@@ -1,45 +1,46 @@
 import 'react-app-polyfill/ie9'; // For IE 9-11 support
 import 'react-app-polyfill/ie11';
-// For IE 11 support
-import React from 'react';
-import {hydrate} from 'react-dom';
+import React, {Suspense} from 'react';
+import {loadableReady} from "@loadable/component";
+import {hydrate, render} from 'react-dom';
 import {Helmet, HelmetProvider} from 'react-helmet-async';
-import {library} from '@fortawesome/fontawesome-svg-core'
-import {fab} from '@fortawesome/free-brands-svg-icons'
-import {fas} from "@fortawesome/free-solid-svg-icons";
-import {far} from "@fortawesome/free-regular-svg-icons";
+import {Provider, ReactReduxContext} from "react-redux";
+import {BrowserRouter} from "react-router-dom";
+import configureAppStore from "../app/commons/configureAppStore";
+
 import App from "../app/index";
 
-//import {Provider} from 'react-redux';
+const preloadedState = window.__INITIAL_STATE__;
 
+delete window.__INITIAL_STATE__;
 
-//const store = configureStore(window.__PRELOADED_STATE__);
+const store = configureAppStore(preloadedState);
+
 const helmetContext = {
     htmlAttributes: {lang: 'tr'}
 };
 
-library.add(fab, fas, far)
+const renderMethod = !!module.hot ? render : hydrate
 
-hydrate(
-    // <Provider store={store}>
-    <HelmetProvider context={helmetContext}>
-        <Helmet htmlAttributes={{lang: 'tr'}}>
-            <title>Razzle React Server Render</title>
-        </Helmet>
-        <App/>
-    </HelmetProvider>,
-    // </Provider>,
-    document.getElementById('root')
-);
-
+const appRoot = document.querySelector("#appRoot")
+loadableReady(() => {
+    renderMethod(
+        <Provider store={store} context={ReactReduxContext}>
+            <BrowserRouter>
+                <HelmetProvider context={helmetContext}>
+                    <Helmet htmlAttributes={{lang: 'tr'}}>
+                        <title>Razzle React Server Render</title>
+                    </Helmet>
+                    <App/>
+                </HelmetProvider>
+            </BrowserRouter>
+        </Provider>,
+        appRoot
+    )
+});
 if(module.hot){
-    module.hot.accept('../app', () => {
-        hydrate(
-            // <Provider store={store}>
-            <HelmetProvider context={helmetContext}>
-                <App/>,
-            </HelmetProvider>,
-            document.getElementById('root')
-        );
-    });
+    module.hot.accept();
 }
+// register({
+//     swDest: 'my-service-worker-name.js',
+// });
