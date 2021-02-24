@@ -1,2 +1,8 @@
-# portal-server-app
- portal-server-app
+# react server render boilerplate
+react server render :
+- Redux
+- Saga
+- Route
+- Sass
+
+via razzle
