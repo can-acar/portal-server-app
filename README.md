@@ -4,5 +4,7 @@ react server render :
 - Saga
 - Route
 - Sass
+- Auth
+- Dynamic inject reducer
 
 via razzle
