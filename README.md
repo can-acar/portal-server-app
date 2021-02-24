@@ -1,5 +1,5 @@
-# react server render boilerplate
-react server render :
+# react razzle ssr starter
+
 - Redux
 - Saga
 - Route
